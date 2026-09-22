@@ -2,6 +2,8 @@
 
 Course-project experiments adapting a compact GPT-2 implementation to several downstream NLP tasks, with an emphasis on learning under limited data and compute.
 
+The complete project write-up is available in [`docs/final-report.pdf`](docs/final-report.pdf).
+
 ## Project overview
 
 The project covers:
@@ -20,6 +22,7 @@ Most source files originate from a course starter repository. The course-project
 .
 ├── models/                     # GPT-2 model implementation
 ├── modules/                    # attention and transformer-layer modules
+├── docs/final-report.pdf       # final project report
 ├── results/                    # sanitized experiment summary
 ├── classifier.py               # sentiment-classification entry point
 ├── classifier_hpsearch.py      # hyperparameter search
