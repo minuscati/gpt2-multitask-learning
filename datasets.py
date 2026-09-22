@@ -127,6 +127,8 @@ class SonnetsDataset(Dataset):
     self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
 
     self.tokenizer.pad_token = self.tokenizer.eos_token
+    # new
+    self.needs_eos = 'sonnets_held_out.txt' not in file_path
     self.sonnets = self._load_sonnets(file_path)
 
   def _load_sonnets(self, file_path):
@@ -144,7 +146,11 @@ class SonnetsDataset(Dataset):
     return len(self.sonnets)
 
   def __getitem__(self, idx):
-    return (idx, self.sonnets[idx])
+    if self.needs_eos:
+      text = self.sonnets[idx] + self.tokenizer.eos_token
+    else:
+      text = self.sonnets[idx]
+    return (idx, text)
 
   def collate_fn(self, all_data):
     idx = [example[0] for example in all_data]

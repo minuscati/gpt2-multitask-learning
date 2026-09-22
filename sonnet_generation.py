@@ -4,9 +4,9 @@ Sonnet generation starter code.
 Running:
   `python sonnet_generation.py --use_gpu`
 
-trains your SonnetGPT model and writes the required submission files.
+trains your SonnetGPT   odel and writes the required submission files.
 '''
-
+import os
 import argparse
 import random
 import torch
@@ -60,16 +60,23 @@ class SonnetGPT(nn.Module):
     not just the last token! This will allow our model to learn the natural language distribution that composes sonnets,
     not just the distribution over next tokens for the last token!
     """
-    ### YOUR CODE HERE
-    raise NotImplementedError
+    gpt_outputs = self.gpt(input_ids, attention_mask) # this get hidden states
+
+    hidden_states = gpt_outputs['last_hidden_state'] # [batch_size, seq_len, hidden_size]
+
+    logits = self.gpt.hidden_state_to_token(hidden_states)
+
+    return logits
 
 
   def get_device(self):
     for param in self.gpt.parameters():
       return param.device
 
+  # add top-k and repetition penalty
+
   @torch.no_grad()
-  def generate(self, encoding, temperature=0.7, top_p=0.9, max_length=128):
+  def generate(self, encoding, temperature=0.7, top_k=50, top_p=0.9, repetition_penalty=1.15, max_length=128):
     """
     Generates an original sonnet using top-p sampling and softmax temperature.
 
@@ -80,11 +87,40 @@ class SonnetGPT(nn.Module):
     token_ids = encoding.to(self.get_device())
     attention_mask = torch.ones(token_ids.shape, dtype=torch.int64).to(self.get_device())
 
-
+    whitelist_chars = ['\n', ',', '.', ';', '?', '!', ':', '-', "'", '"']
+    whitelist_ids = set()
+    for char in whitelist_chars:
+      whitelist_ids.update(self.tokenizer.encode(char))
+      whitelist_ids.update(self.tokenizer.encode(' ' + char))
     for _ in range(max_length):
       # Forward pass to get logits
       logits_sequence = self.forward(token_ids, attention_mask)
       logits_last_token = logits_sequence[:, -1, :] / temperature  # Apply temperature scaling
+
+      # repetition_penalty
+      if repetition_penalty > 1.0:
+        # get unique token ids that has appeared
+        # shape token_ids [batch_size, seq]
+        unique_tokens = torch.unique(token_ids[0])
+        for token in unique_tokens:
+          if token.item() in whitelist_ids:
+              continue
+          # penalty for logits of appeared tokens
+          val = logits_last_token[0, token]
+          logits_last_token[0, token] = val / repetition_penalty if val > 0 else val * repetition_penalty
+
+      # top-k filtering
+      if top_k > 0:
+        # find k largest logits
+        top_k_values, _ = torch.topk(logits_last_token, top_k)
+        # find the minimum k
+        min_top_k = top_k_values[:, -1].unsqueeze(-1)
+        # set logits smaller than min_top_k to minus infinity
+        logits_last_token = torch.where(
+          logits_last_token < min_top_k,
+          torch.tensor(-float('Inf')).to(logits_last_token.device),
+          logits_last_token
+        )
 
       # Convert logits to probabilities
       probs = torch.nn.functional.softmax(logits_last_token, dim=-1)
@@ -129,14 +165,25 @@ def save_model(model, optimizer, args, filepath):
   torch.save(save_info, filepath)
   print(f"save the model to {filepath}")
 
-
+# modified for early stop to prevent overfitting
 def train(args):
   """Train GPT-2 for paraphrase detection on the Quora dataset."""
-  device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+  if args.use_gpu:
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+    elif torch.backends.mps.is_available():
+        device = torch.device('mps')
+    else:
+        device = torch.device('cpu')
+  else:
+    device = torch.device('cpu')
   # Create the data and its corresponding datasets and dataloader.
   sonnet_dataset = SonnetsDataset(args.sonnet_path)
   sonnet_dataloader = DataLoader(sonnet_dataset, shuffle=True, batch_size=args.batch_size,
                                  collate_fn=sonnet_dataset.collate_fn)
+
+  dev_dataset = SonnetsDataset('data/TRUE_sonnets_held_out_dev.txt')
+  dev_dataloader = DataLoader(dev_dataset, shuffle=False, batch_size=args.batch_size, collate_fn=dev_dataset.collate_fn)
 
   # Create the held-out dataset: these only have the first 3 lines. Your job is to fill in the rest!
   held_out_sonnet_dataset = SonnetsDataset(args.held_out_sonnet_path)
@@ -147,6 +194,20 @@ def train(args):
 
   lr = args.lr
   optimizer = AdamW(model.parameters(), lr=lr)
+
+  model_path = 'best_sonnet_model.pt'
+  if os.path.exists(model_path):
+    print(f"loading last history model{model_path}")
+    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
+    model.load_state_dict(checkpoint['model'])
+    optimizer.load_state_dict(checkpoint['optim'])
+  else:
+    print(f"no history model found.")
+
+  # initialize early stop params
+  best_loss = float('inf')
+  patience = 3
+  patience_counter = 0
 
   # Run for the specified number of epochs.
   for epoch in range(args.epochs):
@@ -174,21 +235,74 @@ def train(args):
 
     train_loss = train_loss / num_batches
     print(f"Epoch {epoch}: train loss :: {train_loss :.3f}.")
+
+    # new
+    model.eval()
+    val_loss = 0
+    num_val_batches = 0
+
+    with torch.no_grad():
+      for batch in dev_dataloader:
+        b_ids, b_mask = batch['token_ids'], batch['attention_mask']
+        b_ids = b_ids.to(device)
+        b_mask = b_mask.to(device)
+
+        logits = model(b_ids, b_mask)
+        logits = rearrange(logits[:, :-1].contiguous(), 'b t d -> (b t) d')
+        labels = b_ids[:, 1:].contiguous().flatten()
+        loss = F.cross_entropy(logits, labels, reduction='mean')
+
+        val_loss += loss.item()
+        num_val_batches += 1
+
+    val_loss = val_loss / num_val_batches
+    print(f"Epoch {epoch}: val loss :: {val_loss :.3f}")
+
+    # early stop judgging
+    if val_loss < best_loss:
+      best_loss = val_loss
+      patience_counter = 0
+      save_model(model, optimizer, args, f'best_sonnet_model.pt')
+    else:
+      patience_counter += 1
+      print(f'Loss no decrease, patience_counter: {patience_counter}/{patience}')
+
+    if patience_counter >= patience:
+      print(f'Early stopping on epoch {epoch}.')
+      break
+
     print('Generating several output sonnets...')
     model.eval()
-    for batch in held_out_sonnet_dataset:
+    """ for batch in held_out_sonnet_dataset:
+      encoding = model.tokenizer(batch[1], return_tensors='pt', padding=True, truncation=True).to(device)
+      output = model.generate(encoding['input_ids'], temperature=args.temperature, top_p=args.top_p)
+      print(f'{batch[1]}{output[1]}\n\n') """
+    
+    for i, batch in enumerate(held_out_sonnet_dataset):
+      if i >= 2:
+        break
       encoding = model.tokenizer(batch[1], return_tensors='pt', padding=True, truncation=True).to(device)
       output = model.generate(encoding['input_ids'], temperature=args.temperature, top_p=args.top_p)
       print(f'{batch[1]}{output[1]}\n\n')
+    if torch.backends.mps.is_available():
+      torch.mps.empty_cache()
 
     # TODO: consider a stopping condition to prevent overfitting on the small dataset of sonnets.
-    save_model(model, optimizer, args, f'{epoch}_{args.filepath}')
+    # save_model(model, optimizer, args, f'{epoch}_{args.filepath}')
 
 
 @torch.no_grad()
 def generate_submission_sonnets(args):
-  device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
-  saved = torch.load(f'{args.epochs-1}_{args.filepath}', weights_only=False)
+  if args.use_gpu:
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+    elif torch.backends.mps.is_available():
+        device = torch.device('mps')
+    else:
+        device = torch.device('cpu')
+  else:
+    device = torch.device('cpu')
+  saved = torch.load('best_sonnet_model.pt', weights_only=False)
 
   model = SonnetGPT(saved['args'])
   model.load_state_dict(saved['model'])

@@ -1,6 +1,6 @@
 # GPT-2 Multitask Learning
 
-Course-project experiments adapting a compact GPT-2 implementation to several downstream NLP tasks, with an emphasis on learning under limited data and compute.
+This repository presents a team course project that I participated in, adapting a compact GPT-2 implementation to several downstream NLP tasks with an emphasis on learning under limited data and compute.
 
 The complete project write-up is available in [`docs/final-report.pdf`](docs/final-report.pdf).
 
@@ -29,23 +29,18 @@ Most source files originate from a course starter repository. The course-project
 ├── classifier_hpsearch.py      # hyperparameter search
 ├── classifier_hps2.py          # extended experiment configuration
 ├── classifier_hps3.py          # extended experiment configuration
+├── classifier_lora.py          # LoRA sentiment experiments on SST
+├── classifier_lora_cfimdb.py   # LoRA experiments specialized for CFIMDB
+├── classifier_lora_meanpool.py # LoRA experiments with mean pooling
 ├── paraphrase_detection.py     # paraphrase task
 ├── sonnet_generation.py        # language-generation task
+├── sonnet_generate_new.py      # extended sonnet experiments
+├── evaluate_chrf.py            # chrF evaluation for generated sonnets
 ├── optimizer.py                # AdamW implementation
 └── env.yml                     # Conda environment
 ```
 
 Datasets, checkpoints, generated predictions and other large artifacts are intentionally excluded.
-
-## Original development branches
-
-The default `main` branch is a cleaned portfolio snapshot. The original team-development branches and their commit histories are preserved in this repository:
-
-- [`Sentiment-Analysis_Hypersearch`](https://github.com/minuscati/gpt2-multitask-learning/tree/Sentiment-Analysis_Hypersearch) - sentiment fine-tuning and hyperparameter search;
-- [`mc`](https://github.com/minuscati/gpt2-multitask-learning/tree/mc) - LoRA sentiment experiments, including SST and CFIMDB variants;
-- [`yuzhou-sonnet`](https://github.com/minuscati/gpt2-multitask-learning/tree/yuzhou-sonnet) - sonnet training, decoding and chrF evaluation.
-
-These branches retain the submitted project structure for provenance. They may also contain course-provided datasets, predictions and intermediate artifacts that are deliberately omitted from `main`.
 
 ## Setup
 
@@ -60,6 +55,7 @@ Obtain the datasets through the original course instructions and place them in `
 
 ```bash
 python classifier.py --help
+python classifier_lora.py --help
 python paraphrase_detection.py --help
 python sonnet_generation.py --help
 ```
