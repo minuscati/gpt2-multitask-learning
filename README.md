@@ -13,6 +13,7 @@ The project covers:
 - sonnet generation with configurable decoding;
 - comparisons between linear probing and full-model fine-tuning;
 - regularization and hyperparameter-search experiments;
+- parameter-efficient fine-tuning with LoRA.
 
 Most source files originate from a course starter repository. The course-project work focused on completing and extending the GPT-2 implementation, optimizer and training workflow, then designing and running the downstream experiments. See [ATTRIBUTION.md](ATTRIBUTION.md) for provenance and licensing details.
 
@@ -36,6 +37,16 @@ Most source files originate from a course starter repository. The course-project
 
 Datasets, checkpoints, generated predictions and other large artifacts are intentionally excluded.
 
+## Original development branches
+
+The default `main` branch is a cleaned portfolio snapshot. The original team-development branches and their commit histories are preserved in this repository:
+
+- [`Sentiment-Analysis_Hypersearch`](https://github.com/minuscati/gpt2-multitask-learning/tree/Sentiment-Analysis_Hypersearch) - sentiment fine-tuning and hyperparameter search;
+- [`mc`](https://github.com/minuscati/gpt2-multitask-learning/tree/mc) - LoRA sentiment experiments, including SST and CFIMDB variants;
+- [`yuzhou-sonnet`](https://github.com/minuscati/gpt2-multitask-learning/tree/yuzhou-sonnet) - sonnet training, decoding and chrF evaluation.
+
+These branches retain the submitted project structure for provenance. They may also contain course-provided datasets, predictions and intermediate artifacts that are deliberately omitted from `main`.
+
 ## Setup
 
 Create the environment:
@@ -57,6 +68,7 @@ python sonnet_generation.py --help
 
 - Full-model fine-tuning consistently outperformed linear probing in the sentiment experiments.
 - The smaller SST dataset was more sensitive to overfitting than CFIMDB.
+- LoRA matched or exceeded the full fine-tuning baseline while updating only a small fraction of model parameters.
 - Controlled sampling and repetition handling improved the quality of generated sonnets.
 
 Detailed run-level metrics are available in [`results/experiment-summary.csv`](results/experiment-summary.csv). This file omits local paths, timestamps and checkpoint names.
