@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.idea/
+.vscode/
+.DS_Store
+
+# Data, model weights, predictions and generated experiment artifacts
+data/
+*.pt
+*.pth
+*.ckpt
+*.pkl
+predictions/
+hyperresults/
+hpsearch_results/
+wandb/
